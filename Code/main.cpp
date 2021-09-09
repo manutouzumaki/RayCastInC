@@ -1,5 +1,6 @@
 #include <windows.h>
 #include <stdio.h>
+#include <float.h>
 #include <math.h>
 #include "bitmap.h"
 #include "bitmap.cpp"
@@ -41,13 +42,13 @@ v2 operator*(v2& A, float Value)
 #define MAP_NUM_ROWS 13
 #define MAP_NUM_COLS 20
 
-#define MINIMAP_SCALE_FACTOR 0.5
+#define MINIMAP_SCALE_FACTOR 0.2
 
 #define WND_WIDTH (MAP_NUM_COLS * TILE_SIZE)
 #define WND_HEIGHT (MAP_NUM_ROWS * TILE_SIZE)
 
 #define FOV_ANGLE (60 * (PI / 180))
-#define WALL_STRIP_WIDTH 8.0
+#define WALL_STRIP_WIDTH 1.0
 #define NUMBER_RAYS (WND_WIDTH/WALL_STRIP_WIDTH)
 
 int Map[MAP_NUM_ROWS][MAP_NUM_COLS] = 
@@ -78,6 +79,7 @@ struct ray
     bool IsRayFacingLeft;
     bool IsRayFacingRight;
     bool ShouldRender;
+    bool WasHitVertical;
 };
 
 struct player
@@ -240,7 +242,7 @@ RenderMap(unsigned int *Buffer)
         {
             int TileX = X * TILE_SIZE;
             int TileY = Y * TILE_SIZE;
-            unsigned int Color = Map[Y][X] != 0 ? 0xFF222222 : 0xFFFFFFDD;
+            unsigned int Color = Map[Y][X] != 0 ? 0xFFDD2222 : 0xFFFFCCCC;
             DrawRect(Buffer,
                      TileX * MINIMAP_SCALE_FACTOR,
                      TileY * MINIMAP_SCALE_FACTOR,
@@ -334,12 +336,14 @@ CastRay(ray *Ray, player *Player)
     XIncrement *= Ray->IsRayFacingRight && XIncrement < 0 ? -1.0f : 1.0f;
 
     float NextHorizontalTouchX = XHorizontalIntersection;
-    float NextHorizontalTouchY = YHorizontalIntersection; 
-    NextHorizontalTouchY -= Ray->IsRayFacingUp ? 1.0f : 0.0f;
+    float NextHorizontalTouchY = YHorizontalIntersection;
+
+    float Offset = Ray->IsRayFacingUp ? 1.0f : 0.0f;
+
     while(NextHorizontalTouchX >= 0 && NextHorizontalTouchX <= WND_WIDTH &&
           NextHorizontalTouchY >= 0 && NextHorizontalTouchY <= WND_HEIGHT)
     {
-        if(!IsMapPositionEmpty((int)NextHorizontalTouchX, (int)NextHorizontalTouchY))
+        if(!IsMapPositionEmpty((int)NextHorizontalTouchX, (int)NextHorizontalTouchY - Offset))
         {
             FoundHorizontalIntersection = true;
             break;
@@ -368,11 +372,13 @@ CastRay(ray *Ray, player *Player)
 
     float NextVerticalTouchX = XVerticalIntersection;
     float NextVerticalTouchY = YVerticalIntersection; 
-    NextVerticalTouchX -= Ray->IsRayFacingLeft ? 1.0f : 0.0f;
+
+    Offset = Ray->IsRayFacingLeft ? 1.0f : 0.0f;
+
     while(NextVerticalTouchX >= 0 && NextVerticalTouchX <= WND_WIDTH &&
           NextVerticalTouchY >= 0 && NextVerticalTouchY <= WND_HEIGHT)
     {
-        if(!IsMapPositionEmpty((int)NextVerticalTouchX, (int)NextVerticalTouchY))
+        if(!IsMapPositionEmpty((int)NextVerticalTouchX - Offset, (int)NextVerticalTouchY))
         {
             FoundVerticalIntersection = true;
             break;
@@ -385,8 +391,13 @@ CastRay(ray *Ray, player *Player)
     }
 
     Ray->ShouldRender = FoundHorizontalIntersection || FoundVerticalIntersection;
-    float HDistance = Length(fabs(Player->X - NextHorizontalTouchX), fabs(Player->Y - NextHorizontalTouchY));
-    float VDistance = Length(fabs(Player->X - NextVerticalTouchX), fabs(Player->Y - NextVerticalTouchY));
+    float HDistance = FoundHorizontalIntersection 
+                      ? Length(fabs(Player->X - NextHorizontalTouchX), fabs(Player->Y - NextHorizontalTouchY)) 
+                      : FLT_MAX;
+    float VDistance = FoundVerticalIntersection
+                      ? Length(fabs(Player->X - NextVerticalTouchX), fabs(Player->Y - NextVerticalTouchY))
+                      : FLT_MAX;
+
     if(HDistance < VDistance)
     {
         Ray->Distance = HDistance;
@@ -399,6 +410,8 @@ CastRay(ray *Ray, player *Player)
         Ray->XHit = NextVerticalTouchX;
         Ray->YHit = NextVerticalTouchY;
     }
+
+    Ray->WasHitVertical = (VDistance < HDistance);
 
 }
 
@@ -435,7 +448,7 @@ RenderRays(unsigned int *Buffer, player *Player)
             MINIMAP_SCALE_FACTOR * Player->Y,
             MINIMAP_SCALE_FACTOR * Ray->XHit,
             MINIMAP_SCALE_FACTOR * Ray->YHit,
-            0xFF00FF00);
+            0xFFDDDD22);
         }
         
     }
@@ -454,6 +467,37 @@ MovePlayer(player *Player, float DeltaTime)
     {
         Player->X = NewPlayerX;
         Player->Y = NewPlayerY;
+    }
+}
+
+static void
+RenderWalls(unsigned int *Buffer, player *Player)
+{
+    for(int Index = 0;
+        Index < NUMBER_RAYS;
+        ++Index)
+    { 
+        ray *Ray = Player->Rays + Index;
+
+        float DistanceToProjPlane = (WND_WIDTH*0.5f) / (tanf(FOV_ANGLE*0.5f));
+
+        float RayDistance =  Ray->Distance * cosf(Ray->Angle - Player->RotationAngle);
+
+        float WallHeight = (TILE_SIZE / RayDistance) * DistanceToProjPlane;  
+        
+
+        unsigned int Color = 0xFFCCCC00;
+        if(Ray->WasHitVertical)
+        {
+            Color = 0xFF999900;
+        }
+
+        DrawRect(Buffer,
+                 Index*WALL_STRIP_WIDTH,
+                 (WND_HEIGHT*0.5f) - (WallHeight*0.5f),
+                 (Index*WALL_STRIP_WIDTH)+WALL_STRIP_WIDTH,
+                 (WND_HEIGHT*0.5f) + (WallHeight*0.5f),
+                 Color);
     }
 }
 
@@ -616,11 +660,12 @@ int WINAPI WinMain(HINSTANCE Instance,
             Time += 0.01f;
             // --------------------------------------------------------
 #endif     
-
+            DrawRect(Buffer, 0, 0, WND_WIDTH, WND_HEIGHT*0.5f, 0xFF00CCCC);
+            DrawRect(Buffer, 0, WND_HEIGHT*0.5f, WND_WIDTH, WND_HEIGHT, 0xFF005500);
+            RenderWalls(Buffer, &Player);
             RenderMap(Buffer);
             RenderRays(Buffer, &Player);
             RenderPlayer(Buffer, &Player);
-
 
             BitBlt(DeviceContext, NULL, NULL, Width, Height, BufferContext, NULL, NULL, SRCCOPY);
 
