@@ -559,13 +559,6 @@ int WINAPI WinMain(HINSTANCE Instance,
 
         SelectObject(BufferContext, BackBufferHandle);
 
-        bit_map Sabrina32BMP = LoadBMP("../Data/Sabrina.bmp");
-        bit_map Sabrina8BMP = LoadBMP("../Data/Sabrina1.bmp");
-        bit_map Camila32BMP = LoadBMP("../Data/Camila.bmp");
-        bit_map Camila8BMP = LoadBMP("../Data/Camila1.bmp");
-        bit_map Doggie8BMP = LoadBMP("../Data/DOGGIE4.BMP");
-        Doggie8BMP.Pixels = (void *)CompressSprite(&Doggie8BMP, 0xFF000100);
-        
         player Player = {};
         Player.X = WND_WIDTH / 2;
         Player.Y = WND_HEIGHT / 2;
@@ -617,10 +610,12 @@ int WINAPI WinMain(HINSTANCE Instance,
 
             ProcesInputMessages(&Player);
             unsigned int *Buffer = (unsigned int *)BackBuffer;
-
+            
+            // Update
             MovePlayer(&Player, DeltaTime);
             CastAllRays(&Player);
-
+            
+            // Render
             for(int Y = 0;
                 Y < Height;
                 ++Y)
@@ -632,34 +627,7 @@ int WINAPI WinMain(HINSTANCE Instance,
                     Buffer[Y*Width+X] = 0xFF000000; 
                 }
             }
-#if 0
-            // TEST CODE DELETE THIST LATER...
-            // --------------------------------------------------------
-            Bits32TransparentBlt(BackBuffer, &BackBufferInfo.bmiHeader,
-                            0, 0, Sabrina32BMP);
-            Bits8TransparentBlt(BackBuffer, &BackBufferInfo.bmiHeader,
-                                256, 0, Sabrina8BMP, 0xFF000000);
-            Bits32TransparentBlt(BackBuffer, &BackBufferInfo.bmiHeader,
-                                 0, 256, Camila32BMP);
-            Bits8TransparentBlt(BackBuffer, &BackBufferInfo.bmiHeader,
-                           128, 256, Camila8BMP, 0xFF000000);
- 
-            Bits8TransparentBltRLE(BackBuffer, &BackBufferInfo.bmiHeader,
-                                   300, 200, Doggie8BMP);
-
-            DrawRect(Buffer, 100, 350, 150, 450, 0xFFFF0000);
-            DrawLine(Buffer, 0, 0, 100, 50, 0xFF00FF00);
-            DrawLine(Buffer, 0, 50, 100, 0, 0xFFFF0000);
-            DrawCircle(Buffer, 100, 100, 100, 0xFF0000FF);
-
-            static float Time = 0.0f;
-            float XClockPos = (cosf(Time) * 100) + 100;
-            float YClockPos = (sinf(Time) * 100) + 100;
-            DrawLine(Buffer, 100, 100, XClockPos, YClockPos, 0xFFFF00FF);
-            DrawCircle(Buffer, XClockPos, YClockPos, 5, 0xFFFFFF00);
-            Time += 0.01f;
-            // --------------------------------------------------------
-#endif     
+  
             DrawRect(Buffer, 0, 0, WND_WIDTH, WND_HEIGHT*0.5f, 0xFF00CCCC);
             DrawRect(Buffer, 0, WND_HEIGHT*0.5f, WND_WIDTH, WND_HEIGHT, 0xFF005500);
             RenderWalls(Buffer, &Player);
